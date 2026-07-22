@@ -100,6 +100,18 @@ with tabs[0]:
     st.dataframe(r, use_container_width=True, height=420)
     st.subheader('分品种留存率')
     st.dataframe(rb, use_container_width=True, height=300)
+    st.subheader('分品种 × 药房 留存率（定位差药房）')
+    rbp = res.get('retention_by_brand_pharmacy')
+    if rbp is not None and not rbp.empty:
+        brands = sorted(rbp['品牌'].unique())
+        selb = st.selectbox('选择品种查看各药房留存率（口径1）', brands, key='ret_pharm')
+        sub = rbp[rbp['品牌'] == selb].copy()
+        if 'M3留存%' in sub.columns:
+            sub = sub.sort_values('M3留存%')
+        st.caption('按 M3 留存率升序，越靠上 = 该品种下留存越差的药房，优先排查。')
+        st.dataframe(sub, use_container_width=True, height=360)
+    else:
+        st.info('销售底表无「药房名称」列，无法分药房拆分。')
     with st.expander('📊 两套口径差值（口径2−口径1，差越大=囤药/断续购药越明显）'):
         a = res['retention_overall'].set_index('首购月')
         b = res['retention_cov_overall'].set_index('首购月')
@@ -185,6 +197,10 @@ with tabs[7]:
             st.subheader(f'跨表关联 · 近似患者级（置信度低，匹配 {m}/{t} = {m / max(t, 1) * 100:.0f}%）')
             st.caption('按 姓名+品种+首购月 近似匹配；同名歧义大，仅供线索排查。')
             st.dataframe(cp, use_container_width=True, height=360)
+        if 'dropout_reason_by_pharmacy' in res:
+            st.subheader('脱落原因 × 药房 × 品种（汇总·已匹配患者）')
+            st.caption('仅统计成功匹配到随访原因的脱落患者；原因类=可控/不可控/其他。用于把改进措施落到具体药房品种。')
+            st.dataframe(res['dropout_reason_by_pharmacy'], use_container_width=True, height=320)
     else:
         st.info('未上传随访表，无跨表脱落原因。')
 
@@ -221,6 +237,7 @@ with dcol1:
         res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率口径1_仅购药_分品种', index=False)
         res['retention_cov_overall'].to_excel(xw, sheet_name='1b_留存率口径2_覆盖_整体', index=False)
         res['retention_cov_by_brand'].to_excel(xw, sheet_name='2b_留存率口径2_覆盖_分品种', index=False)
+        res['retention_by_brand_pharmacy'].to_excel(xw, sheet_name='2c_留存率_分品种×药房', index=False)
         res['dropout_A']['整体_月度'].to_excel(xw, sheet_name='3_脱落率A_整体', index=False)
         if '分品种_月度' in res['dropout_A']:
             res['dropout_A']['分品种_月度'].to_excel(xw, sheet_name='4_脱落率A_分品种', index=False)
@@ -228,6 +245,8 @@ with dcol1:
         res['dropout_B_established_by_brand'].to_excel(xw, sheet_name='5b_脱落率B_已观察', index=False)
         if 'crossref_brand' in res:
             res['crossref_brand'].to_excel(xw, sheet_name='6_跨表关联_品牌', index=False)
+        if 'dropout_reason_by_pharmacy' in res:
+            res['dropout_reason_by_pharmacy'].to_excel(xw, sheet_name='6b_脱落原因_药房×品种', index=False)
         if 'crossref_patient' in res:
             res['crossref_patient'].to_excel(xw, sheet_name='7_跨表关联_患者级', index=False)
         res['action_map'].to_excel(xw, sheet_name='8_行动建议', index=False)

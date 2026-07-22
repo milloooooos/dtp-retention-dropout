@@ -51,6 +51,7 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
     res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率口径1_仅购药_分品种', index=False)
     res['retention_cov_overall'].to_excel(xw, sheet_name='1b_留存率口径2_盒数覆盖_整体', index=False)
     res['retention_cov_by_brand'].to_excel(xw, sheet_name='2b_留存率口径2_盒数覆盖_分品种', index=False)
+    res['retention_by_brand_pharmacy'].to_excel(xw, sheet_name='2c_留存率_分品种×药房', index=False)
     res['dropout_A']['整体_月度'].to_excel(xw, sheet_name='3_脱落率A_整体月度', index=False)
     if '分品种_月度' in res['dropout_A']:
         res['dropout_A']['分品种_月度'].to_excel(xw, sheet_name='4_脱落率A_分品种', index=False)
@@ -60,6 +61,8 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
     res['dropout_B_established_by_brand'].to_excel(xw, sheet_name='6b_脱落率B_已观察', index=False)
     if 'crossref_brand' in res:
         res['crossref_brand'].to_excel(xw, sheet_name='7_跨表关联_品牌层面', index=False)
+    if 'dropout_reason_by_pharmacy' in res:
+        res['dropout_reason_by_pharmacy'].to_excel(xw, sheet_name='7b_脱落原因_药房×品种', index=False)
     if 'crossref_patient' in res:
         res['crossref_patient'].to_excel(xw, sheet_name='8_跨表关联_患者级近似', index=False)
     res['action_map'].to_excel(xw, sheet_name='9_可控脱落行动建议', index=False)

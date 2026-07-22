@@ -403,6 +403,22 @@ def compute_retention_coverage_by_brand(sales, max_k=12):
         out.append(r)
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
 
+def compute_retention_by_brand_pharmacy(sales, max_k=12):
+    """留存率：分 品牌 × 药房。对每个(品牌,药房)子群跑 compute_retention（口径1：仅购药时间）。
+    样本<3 的子群剔除，避免小样本噪声。用于定位『哪个药房哪个品种留存差』。"""
+    pcol = '药房名称' if '药房名称' in sales.columns else None
+    if not pcol:
+        return pd.DataFrame()
+    out = []
+    for (b, ph), g in sales.groupby(['品牌', pcol]):
+        if b == '其他' or g['患者ID'].nunique() < 3:
+            continue
+        r = compute_retention(g, max_k)
+        r.insert(0, '药房', ph)
+        r.insert(0, '品牌', b)
+        out.append(r)
+    return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+
 # ============================ 2. 脱落率 A（滚动） ============================
 def _monthly_dropout_A(sales):
     months = sorted(sales['ym'].unique())
@@ -455,6 +471,8 @@ def compute_dropout_B(sales, mult=3):
     last = sales.groupby('患者ID').agg(
         末次购药=('销售时间', 'max'), 品牌=('品牌', 'last'),
         首购=('销售时间', 'min'), 患者姓名=('患者姓名', 'last')).copy()
+    if '药房名称' in sales.columns:
+        last['药房'] = sales.groupby('患者ID')['药房名称'].last()
     last['距终点天'] = (end - last['末次购药']).dt.days
     last['阈值天'] = last['品牌'].map(lambda b: mult * DAYS_PER_BOX.get(b, 30))
     last['脱落B'] = last['距终点天'] > last['阈值天']
@@ -498,12 +516,14 @@ def crossref_patient(sales_last, followup):
         m = fmap.get(r['key'])
         if m:
             matched += 1
-            rows.append({'患者姓名': r['患者姓名'], '品牌': r['品牌'], '首购月': str(r['首购月']),
+            rows.append({'患者姓名': r['患者姓名'], '品牌': r['品牌'], '药房': r.get('药房'),
+                         '首购月': str(r['首购月']),
                          '末次购药': r['末次购药'].date(), '距终点天': int(r['距终点天']),
                          '脱落原因(随访)': m['原因原始'], '原因类': m['原因类'],
                          '随访状态': m['用药周期状态'], '关联方式': '姓名+品种+首购月(近似)'})
         else:
-            rows.append({'患者姓名': r['患者姓名'], '品牌': r['品牌'], '首购月': str(r['首购月']),
+            rows.append({'患者姓名': r['患者姓名'], '品牌': r['品牌'], '药房': r.get('药房'),
+                         '首购月': str(r['首购月']),
                          '末次购药': r['末次购药'].date(), '距终点天': int(r['距终点天']),
                          '脱落原因(随访)': None, '原因类': None,
                          '随访状态': None, '关联方式': '无随访匹配'})
@@ -958,9 +978,9 @@ def communication_list(hosp_df, docwatch, pharm_df):
             })
     return pd.DataFrame(comm).sort_values(['品种', '维度', '患者数'], ascending=[True, True, False])
 
-def improvement_actions():
-    """通用改进措施与责任方。"""
-    return pd.DataFrame([
+def improvement_actions(res=None):
+    """通用改进措施 + 结合本数据实际脱落原因的专项（动态）。res 含 crossref 时追加。"""
+    base = [
         {'方向': '稳住新患·提升DOT', '类型': '内部(可控)',
          '动作': '对高新患占比医院持续患者随访管理+患教，缩短新患首购→二购周期',
          '数据依据': '新患窗口 DOT 显著低于老患；成熟队列达二购率通常高于全量',
@@ -981,7 +1001,39 @@ def improvement_actions():
          '动作': '对体量大但 DOT 偏低的项目药房，核查续方管理、患者外流、随访执行',
          '数据依据': '项目药房风险等级',
          '责任方': '门店运营'},
-    ])
+    ]
+    if res is None:
+        return pd.DataFrame(base)
+    # 动态专项1：品牌层面可控脱落占比最高的品种
+    cb = res.get('crossref_brand')
+    if cb is not None and not cb.empty and '可控占比%' in cb.columns:
+        top = cb.dropna(subset=['可控占比%']).sort_values('可控占比%', ascending=False).head(3)
+        for _, r in top.iterrows():
+            ctrl = r.get('可控占比%')
+            if pd.isna(ctrl):
+                continue
+            base.append({
+                '方向': f'{r["品牌"]} · 脱落原因干预',
+                '类型': '内部(可控)' if ctrl >= 50 else '混合(可控+外部)',
+                '动作': f'随访脱落患者中约 {ctrl:.0f}% 为可控原因(经济/副作用/依从性/随访缺失)，建专项：续方提醒+副作用管理+患者教育',
+                '数据依据': f'销售脱落率B={r.get("销售脱落率B%")}%；随访脱落可控占比={ctrl:.0f}%',
+                '责任方': '患者服务运营+药房药师'})
+    # 动态专项2：按药房×品种 可控脱落人数 TOP5
+    drp = res.get('dropout_reason_by_pharmacy')
+    if drp is not None and not drp.empty:
+        ctrl_ph = drp[drp['原因类'] == '可控'].groupby(['药房', '品牌'])['脱落患者数'].sum().reset_index()
+        ctrl_ph = ctrl_ph.sort_values('脱落患者数', ascending=False).head(5)
+        for _, r in ctrl_ph.iterrows():
+            n = int(r['脱落患者数'])
+            if n <= 0:
+                continue
+            base.append({
+                '方向': f'{r["药房"]} · {r["品牌"]} · 可控脱落治理',
+                '类型': '内部(可控)',
+                '动作': f'该药房{r["品牌"]}有 {n} 名患者因可控原因脱落，优先电话随访+续方提醒+到店激励',
+                '数据依据': f'近似匹配随访原因=可控，{n}人',
+                '责任方': '对应药房药师'})
+    return pd.DataFrame(base)
 
 def generate_word_report(res, sales_info=None):
     """生成可下载的 Word 复盘报告（关键结论 + 表格）。"""
@@ -1091,6 +1143,7 @@ def run_analysis(sales, followup=None, max_k=12, mult=3, with_patient_crossref=T
     # 留存率 口径1：仅看购药时间（当月是否有购药）
     result['retention_overall'] = compute_retention(sales, max_k)
     result['retention_by_brand'] = compute_retention_by_brand(sales, max_k)
+    result['retention_by_brand_pharmacy'] = compute_retention_by_brand_pharmacy(sales, max_k)
     # 留存率 口径2：结合说明书盒数覆盖期
     result['retention_cov_overall'] = compute_retention_coverage(sales, max_k)
     result['retention_cov_by_brand'] = compute_retention_coverage_by_brand(sales, max_k)
@@ -1110,7 +1163,13 @@ def run_analysis(sales, followup=None, max_k=12, mult=3, with_patient_crossref=T
     if followup is not None and not followup.empty:
         result['crossref_brand'] = crossref_brand(last, followup)
         if with_patient_crossref:
-            result['crossref_patient'] = crossref_patient(last, followup)
+            cp = crossref_patient(last, followup)
+            result['crossref_patient'] = cp
+            # 脱落原因 × 药房 × 品种 汇总（仅已匹配到随访原因的患者）
+            matched = cp[cp['关联方式'] != '无随访匹配'].dropna(subset=['原因类'])
+            if not matched.empty:
+                rc = matched.groupby(['药房', '品牌', '原因类']).size().reset_index(name='脱落患者数')
+                result['dropout_reason_by_pharmacy'] = rc
     # ===== 新增：DOT / 新患 / 复购 / 维度分析 =====
     result['dot_decomposition'] = dot_decomposition(sales)
     result['new_patient_monthly'] = new_patient_monthly(sales)
@@ -1127,7 +1186,7 @@ def run_analysis(sales, followup=None, max_k=12, mult=3, with_patient_crossref=T
     result['drill_hospital_doctor'] = drill_doctor_for_hospital(sales, result['hospital_dimension'])
     result['communication_list'] = communication_list(
         result['hospital_dimension'], result['doctor_low_dot_watch'], result['pharmacy_dimension'])
-    result['improvement_actions'] = improvement_actions()
+    result['improvement_actions'] = improvement_actions(result)
     return result
 
 if __name__ == '__main__':
