@@ -46,5 +46,19 @@ if cp is not None and not cp.empty:
     print('match_rate=%.1f%% low_match=%s' % (cp.attrs.get('match_rate',0)*100, cp.attrs.get('low_match')))
 pld = res.get('patient_level_detail')
 print(pld.head(5).to_string(index=False) if pld is not None and not pld.empty else 'EMPTY')
+print('\n===== DOT 口径验证：方案A(固定1年窗)后,H1 与 custom 是否可比 =====')
+r_h1 = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True, preset='H1_2026')
+r_cu = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True,
+                      preset='custom', custom_start='2026-01-01', custom_end='2026-07-31')
+dd_h1 = r_h1.get('dot_decomposition')
+dd_cu = r_cu.get('dot_decomposition')
+if dd_h1 is not None and dd_cu is not None and not dd_h1.empty:
+    print('H1_2026  DOT窗口:', r_h1['window_info'].iloc[0]['DOT口径(盒/人,不按月归一)'])
+    print('custom   DOT窗口:', r_cu['window_info'].iloc[0]['DOT口径(盒/人,不按月归一)'])
+    m = dd_h1[['品种', 'DOT_本期_全']].merge(dd_cu[['品种', 'DOT_本期_全']], on='品种', suffixes=('_H1', '_custom'))
+    m['差异'] = (m['DOT_本期_全_custom'] - m['DOT_本期_全_H1']).round(2)
+    print(m.to_string(index=False))
+    print('=> 两者皆为「窗口终点前推1年」固定窗,量级应接近(差异<=1-2盒属正常区间错位);不再是短窗机械压低')
+
 print('\nALL KEYS:', sorted(res.keys()))
 print('\nSMOKE TEST OK')

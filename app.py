@@ -6,7 +6,7 @@ DTP 患者服务 · 自助分析 Web App (Streamlit)
 详见 README.md。本地运行：streamlit run app.py
 """
 import io, os, tempfile
-import datetime
+import datetime, inspect
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -94,8 +94,19 @@ with st.spinner('计算中…'):
         except Exception as e:
             st.warning(f'随访表读取失败，将仅输出留存率/脱落率（无跨表原因）：{e}')
             followup = None
-    res = E.run_analysis(sales, followup, max_k=max_k, mult=mult, with_patient_crossref=with_pat,
-                         preset=preset, custom_start=custom_start, custom_end=custom_end)
+    # 引擎签名兜底：若线上引擎为旧缓存版(无 custom_start 形参)，只传它认识的参数，
+    # 避免「旧引擎 + 新 app.py」混合导致 TypeError 白屏（此时自定义区间自动退化为默认 H1 窗口）。
+    _sig = inspect.signature(E.run_analysis)
+    _params = _sig.parameters
+    _call = {'max_k': max_k, 'mult': mult, 'with_patient_crossref': with_pat, 'preset': preset}
+    if 'custom_start' in _params:
+        _call['custom_start'] = custom_start
+        _call['custom_end'] = custom_end
+    else:
+        if preset != 'H1_2026':
+            st.warning('线上引擎为旧版缓存(不含自定义区间参数)，已退化为默认 H1 2026 窗口。请 Redeploy 拉取最新引擎。')
+        preset = 'H1_2026'
+    res = E.run_analysis(sales, followup, **_call)
 
 sales_info = (f'销售 {len(sales):,} 行 / 患者 {sales["患者ID"].nunique():,} / '
               f'{sales["销售时间"].min().date()}~{sales["销售时间"].max().date()}'
