@@ -74,12 +74,8 @@ st.success(f'✅ 销售 {len(sales):,} 行 / 患者 {sales["患者ID"].nunique()
 tabs = st.tabs(['📈 留存率', '🔁 脱落率A', '💤 脱落率B', '🔗 跨表原因', '🎯 行动建议', '📋 说明'])
 
 # ===== 留存率 =====
-with tabs[0]:
-    st.subheader('新患留存率 Cohort（按首购月分群）')
-    st.caption('Mk留存% = 该首购月新患中，在首购后第 k 月「有购药」的占比。注：多盒购买可致曲线非单调递减；近期 cohort 窗口不足显示为空。')
-    r = res['retention_overall']
+def _retention_heatmap(r, title):
     cols = [c for c in r.columns if '留存' in c]
-    # 热力图
     fig, ax = plt.subplots(figsize=(min(2 + len(cols), 16), max(4, len(r) * 0.28)))
     data = r[cols].fillna(np.nan).values.astype(float)
     im = ax.imshow(data, aspect='auto', cmap='YlGnBu', vmin=0, vmax=100)
@@ -91,12 +87,30 @@ with tabs[0]:
             if not np.isnan(v):
                 ax.text(j, i, f'{v:.0f}', ha='center', va='center', fontsize=7,
                         color='white' if v < 50 else 'black')
-    ax.set_title('留存率热力图 (%)')
+    ax.set_title(title)
     fig.colorbar(im, ax=ax, fraction=0.025)
-    st.pyplot(fig)
+    return fig
+
+with tabs[0]:
+    st.subheader('新患留存率 Cohort（按首购月分群）· 两套口径')
+    cal = st.radio('留存口径', ['口径1｜仅看购药时间', '口径2｜结合说明书盒数覆盖'],
+                   horizontal=True, key='ret_cal')
+    if cal.startswith('口径1'):
+        st.caption('Mk留存% = 该首购月新患中，在第 k 月「当月有购药」的占比。多盒购买会使曲线非单调递减（囤3盒者次月不买、第3月才回）；近期 cohort 窗口不足显示为空。')
+        r = res['retention_overall']; rb = res['retention_by_brand']; ttl = '留存率(仅购药时间) 热力图 (%)'
+    else:
+        st.caption('Mk留存% = 每次购药覆盖=销售数量×每盒天数(说明书) 天，覆盖区间与第 k 月有交集即算留存。把囤药者的“在治”计入，曲线更平滑更单调，更贴近真实在治率。')
+        r = res['retention_cov_overall']; rb = res['retention_cov_by_brand']; ttl = '留存率(盒数覆盖) 热力图 (%)'
+    st.pyplot(_retention_heatmap(r, ttl))
     st.dataframe(r, use_container_width=True, height=420)
     st.subheader('分品种留存率')
-    st.dataframe(res['retention_by_brand'], use_container_width=True, height=300)
+    st.dataframe(rb, use_container_width=True, height=300)
+    with st.expander('📊 两套口径差值（口径2−口径1，差越大=囤药/断续购药越明显）'):
+        a = res['retention_overall'].set_index('首购月')
+        b = res['retention_cov_overall'].set_index('首购月')
+        common = [c for c in a.columns if c in b.columns and '留存' in c]
+        diff = (b[common] - a[common]).round(1).reset_index()
+        st.dataframe(diff, use_container_width=True, height=300)
 
 # ===== 脱落率A =====
 with tabs[1]:
@@ -146,7 +160,10 @@ with tabs[4]:
 with tabs[5]:
     st.subheader('口径与边界说明')
     st.markdown('''
-    - **留存率**：按首购月分群（=新患队列），Mk = 首购后第 k 月有购药占比。多盒购买可使其非单调递减；近期 cohort 窗口不足为空（右删失）。
+    - **留存率（两套口径）**：按首购月分群（=新患队列）。
+      - *口径1 仅看购药时间*：Mk = 第 k 月当月有购药占比。多盒购买可使其非单调递减；近期 cohort 窗口不足为空（右删失）。
+      - *口径2 结合说明书盒数覆盖*：每次购药覆盖=销售数量×每盒天数，覆盖区间与第 k 月相交即算留存。曲线更平滑单调，反映真实在治率；两套差值≈囤药/断续购药强度。
+    - **品牌识别（自丰富映射表）**：药名先按品牌字匹配，未含品牌字则查 `brand_aliases.json`（通用名→品牌），并从数据自动学习新别名写回；仍识别不出的记入 unresolved 供人工补录。
     - **脱落率A（滚动）**：基准月 M-2 有购药、M-1∪M 无购药即脱落。月度口径，适合看趋势。
     - **脱落率B（累计沉默）**：末次购药距数据终点 > N×用药间隔 → 真停药。新近患者（首购在终点前 N×间隔内）免判，已观察% 更干净。
     - **跨表关联**：销售脱落患者 ↔ 随访脱落原因（可控/不可控）。两表**无共同患者主键**（会员号格式不同），故：
@@ -160,8 +177,10 @@ with tabs[5]:
 st.divider()
 buf = io.BytesIO()
 with pd.ExcelWriter(buf, engine='openpyxl') as xw:
-    res['retention_overall'].to_excel(xw, sheet_name='1_留存率_整体', index=False)
-    res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率_分品种', index=False)
+    res['retention_overall'].to_excel(xw, sheet_name='1_留存率口径1_仅购药_整体', index=False)
+    res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率口径1_仅购药_分品种', index=False)
+    res['retention_cov_overall'].to_excel(xw, sheet_name='1b_留存率口径2_覆盖_整体', index=False)
+    res['retention_cov_by_brand'].to_excel(xw, sheet_name='2b_留存率口径2_覆盖_分品种', index=False)
     res['dropout_A']['整体_月度'].to_excel(xw, sheet_name='3_脱落率A_整体', index=False)
     if '分品种_月度' in res['dropout_A']:
         res['dropout_A']['分品种_月度'].to_excel(xw, sheet_name='4_脱落率A_分品种', index=False)

@@ -25,8 +25,11 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         'DTP 留存率 / 脱落率(A滚动+B累计沉默) / 跨表脱落原因 自动分析',
         '数据源：销售底表 + 随访历史任务表（2025H1+2026H1）',
         '',
-        '【留存率】按首购月分群（=新患队列），Mk留存% = 该群在首购后第k月"有购药"的患者占比。',
-        '  注意：① 为"当月有购药"口径，因多盒购买可非单调递减；② 近期cohort窗口不足显示为空(右删失)。',
+        '【留存率·两套口径并存，按首购月分群=新患队列】',
+        '  口径1(仅看购药时间)：Mk留存% = 该群首购后第k月"当月有购药"的患者占比。',
+        '    特点：因多盒购买可非单调递减(囤3盒者次月不买第3月才回)；近期cohort窗口不足显示为空(右删失)。',
+        '  口径2(结合说明书盒数覆盖)：每次购药覆盖=销售数量×每盒天数(说明书) 天，覆盖区间与第k月有交集即算留存。',
+        '    特点：把囤药者的"在治"状态计入，曲线更平滑、更单调，更贴近真实在治率。两套对比看差值=囤药/断续行为。',
         '',
         '【脱落率A·滚动】基准月M-2有购药、观察窗M-1∪M无购药→脱落。月度口径，H1取月均。',
         '',
@@ -41,8 +44,10 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         '【脱落映射】原因→可控/不可控分类规则见 action_map 及 dtp_engine.classify_reason。',
     ]})
     notes.to_excel(xw, sheet_name='说明', index=False)
-    res['retention_overall'].to_excel(xw, sheet_name='1_留存率_整体', index=False)
-    res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率_分品种', index=False)
+    res['retention_overall'].to_excel(xw, sheet_name='1_留存率口径1_仅购药_整体', index=False)
+    res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率口径1_仅购药_分品种', index=False)
+    res['retention_cov_overall'].to_excel(xw, sheet_name='1b_留存率口径2_盒数覆盖_整体', index=False)
+    res['retention_cov_by_brand'].to_excel(xw, sheet_name='2b_留存率口径2_盒数覆盖_分品种', index=False)
     res['dropout_A']['整体_月度'].to_excel(xw, sheet_name='3_脱落率A_整体月度', index=False)
     if '分品种_月度' in res['dropout_A']:
         res['dropout_A']['分品种_月度'].to_excel(xw, sheet_name='4_脱落率A_分品种', index=False)
@@ -72,9 +77,11 @@ for ws in wb.worksheets:
 wb.save(xlsx)
 
 print('\n已生成:', xlsx)
-print('\n=== 留存率 整体(首尾) ===')
+print('\n=== 留存率口径1(仅购药时间) 整体(首3行) ===')
 print(res['retention_overall'].head(3).to_string(index=False))
-print(res['retention_overall'].tail(3).to_string(index=False))
+print('\n=== 留存率口径2(盒数覆盖) 整体(首3行) ===')
+print(res['retention_cov_overall'].head(3).to_string(index=False))
+print('\n映射表 unresolved(需人工补录):', E._ALIAS['unresolved'])
 print('\n=== 脱落率B 分品种(全部) ===')
 print(res['dropout_B_by_brand'].to_string(index=False))
 print('\n=== 脱落率B 分品种(已观察) ===')
