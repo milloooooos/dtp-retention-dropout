@@ -11,7 +11,10 @@ F25 = 'E:/下载内容/历史任务 - 2026-07-22T105636.443.xls'
 F26 = 'E:/下载内容/历史任务 - 2026-07-22T105440.252.xls'
 
 print('加载数据...')
-sales = E.load_sales(SRC)
+# 项目药房 TOP 清单（可选）；若路径不存在则按销售底表角色列或默认项目处理
+TOPF = r"D:\微信数据\xwechat_files\tonia852209598_370f\msg\file\2026-05\国控四川项目药房TOP清单-H1.xlsx"
+tier = E.load_pharmacy_tier(TOPF) if os.path.exists(TOPF) else None
+sales = E.load_sales(SRC, tier=tier)
 followup = E.load_followup([F25, F26])
 print(f'  销售: {len(sales)} 行, 患者 {sales["患者ID"].nunique()}, 时间 {sales["销售时间"].min().date()}~{sales["销售时间"].max().date()}')
 print(f'  随访: {len(followup)} 行, 状态类分布 {followup["状态类"].value_counts().to_dict()}')
@@ -60,6 +63,20 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
     if 'crossref_patient' in res:
         res['crossref_patient'].to_excel(xw, sheet_name='8_跨表关联_患者级近似', index=False)
     res['action_map'].to_excel(xw, sheet_name='9_可控脱落行动建议', index=False)
+    # 新增：DOT / 新患 / 复购 / 维度分析
+    res['dot_decomposition'].to_excel(xw, sheet_name='10_DOT分解_老患vs新患', index=False)
+    res['new_patient_monthly'].to_excel(xw, sheet_name='11_新患月度趋势', index=False)
+    res['new_patient_pharmacy_decline'].to_excel(xw, sheet_name='12_新患下降最大药房', index=False)
+    res['old_patient_multi_box'].to_excel(xw, sheet_name='13_老患多盒行为', index=False)
+    res['repurchase_decomposition'].to_excel(xw, sheet_name='14_复购率分解', index=False)
+    res['hospital_dimension'].to_excel(xw, sheet_name='15_医院维度', index=False)
+    res['doctor_top1'].to_excel(xw, sheet_name='16_医生维度_最大患者量', index=False)
+    res['doctor_top5'].to_excel(xw, sheet_name='17_医生维度_TOP5', index=False)
+    res['doctor_low_dot_watch'].to_excel(xw, sheet_name='18_医生维度_低DOT重点', index=False)
+    res['pharmacy_dimension'].to_excel(xw, sheet_name='19_项目药房_风险', index=False)
+    res['drill_hospital_doctor'].to_excel(xw, sheet_name='20_钻取_异常医院拖后腿医生', index=False)
+    res['communication_list'].to_excel(xw, sheet_name='21_重点关注清单', index=False)
+    res['improvement_actions'].to_excel(xw, sheet_name='22_改进措施与责任', index=False)
 
 # 简单样式
 from openpyxl import load_workbook

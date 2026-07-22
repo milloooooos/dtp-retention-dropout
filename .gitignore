@@ -19,3 +19,6 @@ F:/厂家项目/
 /tmp/
 *.log
 .DS_Store
+
+# WorkBuddy 本地会话数据
+.workbuddy/
