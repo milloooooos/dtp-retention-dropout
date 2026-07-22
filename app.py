@@ -6,6 +6,7 @@ DTP 患者服务 · 自助分析 Web App (Streamlit)
 详见 README.md。本地运行：streamlit run app.py
 """
 import io, os, tempfile
+import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -21,12 +22,24 @@ with st.sidebar:
     st.header('⚙️ 分析参数')
     max_k = st.slider('留存追踪月数 (M1~Mk)', 3, 18, 12, help='追踪新患 cohort 后续多少个月的留存')
     mult = st.slider('脱落率B 倍数 (×用药间隔)', 2, 6, 3, help='末次购药距终点 > N×用药间隔 判为真停药；填3≈药吃完后再空2个周期')
-    preset = st.selectbox('时间窗预设', ['H1_2026', 'roll1y', 'full'], index=0,
+    preset = st.selectbox('时间窗预设', ['H1_2026', 'roll1y', 'full', 'custom'], index=0,
                           format_func=lambda x: {'H1_2026': 'H1 2026（2026-01-01~06-30）',
                                                  'roll1y': '回滚1年（末次数据日往前1年）',
-                                                 'full': '全量累计（首笔~末笔销售）'}[x],
+                                                 'full': '全量累计（首笔~末笔销售）',
+                                                 'custom': '自定义区间…'}[x],
                           help='整个报告的统一时间窗：留存/脱落率B终点/脱落原因/DOT/新患同比 都按此窗计算。'
-                               '选「H1 2026」则脱落率B终点=2026-06-30，脱落原因只统计该窗内随访记录。')
+                               '选「H1 2026」则脱落率B终点=2026-06-30；选「自定义区间」可任意选起止（支持跨年/不规则长度，'
+                               '如 2026-01-01~2026-07-31 或 2027 全年），同比=同区间回退1年。')
+    custom_start = None
+    custom_end = None
+    if preset == 'custom':
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            custom_start = st.date_input('自定义·起点', value=datetime.date(2026, 1, 1))
+        with _c2:
+            custom_end = st.date_input('自定义·终点', value=datetime.date(2026, 7, 31))
+        if custom_end < custom_start:
+            st.warning('终点早于起点，将自动对调。')
     with_pat = st.checkbox('输出「患者级」跨表关联', value=True,
                            help='按 姓名+药房 复合键匹配销售脱落患者与随访原因；同人不同药房视为不同人(防重名串号)，置信度仍受同名影响，仅供参考')
     st.divider()
@@ -81,7 +94,8 @@ with st.spinner('计算中…'):
         except Exception as e:
             st.warning(f'随访表读取失败，将仅输出留存率/脱落率（无跨表原因）：{e}')
             followup = None
-    res = E.run_analysis(sales, followup, max_k=max_k, mult=mult, with_patient_crossref=with_pat, preset=preset)
+    res = E.run_analysis(sales, followup, max_k=max_k, mult=mult, with_patient_crossref=with_pat,
+                         preset=preset, custom_start=custom_start, custom_end=custom_end)
 
 sales_info = (f'销售 {len(sales):,} 行 / 患者 {sales["患者ID"].nunique():,} / '
               f'{sales["销售时间"].min().date()}~{sales["销售时间"].max().date()}'

@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """本地批量运行 dtp_engine，产出 Excel 分析报告（留存率/脱落率A/脱落率B/跨表原因）。"""
-import pandas as pd, os
+import pandas as pd, os, argparse
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import dtp_engine as E
+
+parser = argparse.ArgumentParser(description='DTP 复盘分析 Excel 导出')
+parser.add_argument('--preset', default='H1_2026', choices=['H1_2026', 'roll1y', 'full', 'custom'])
+parser.add_argument('--start', default=None, help='自定义窗口起点 YYYY-MM-DD（仅 preset=custom 生效）')
+parser.add_argument('--end', default=None, help='自定义窗口终点 YYYY-MM-DD（仅 preset=custom 生效）')
+args = parser.parse_args()
 
 OUT = 'output'
 os.makedirs(OUT, exist_ok=True)
@@ -19,7 +25,8 @@ followup = E.load_followup([F25, F26])
 print(f'  销售: {len(sales)} 行, 患者 {sales["患者ID"].nunique()}, 时间 {sales["销售时间"].min().date()}~{sales["销售时间"].max().date()}')
 print(f'  随访: {len(followup)} 行, 状态类分布 {followup["状态类"].value_counts().to_dict()}')
 
-res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True, preset='H1_2026')
+res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True,
+                     preset=args.preset, custom_start=args.start, custom_end=args.end)
 
 xlsx = os.path.join(OUT, 'DTP_留存率与脱落分析_v1.xlsx')
 with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
@@ -35,7 +42,7 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         '    特点：把囤药者的"在治"状态计入，曲线更平滑、更单调，更贴近真实在治率。两套对比看差值=囤药/断续行为。',
         '',
         '【统一时间窗】本报告所有指标(留存/脱落率B/脱落原因/DOT/新患同比/医生医院药房维度)共用一个时间窗，',
-        '  由 run_analysis 的 preset 决定（本脚本默认 H1_2026 = 2026-01-01~2026-06-30；另可选 roll1y 回滚1年 / full 全量累计）。',
+        '  由 run_analysis 的 preset 决定（本脚本默认 H1_2026 = 2026-01-01~2026-06-30；另可选 roll1y 回滚1年 / full 全量累计 / custom 自定义区间）。',
         '  脱落率B的判定终点=该窗终点(如 H1 为 2026-06-30)；脱落原因只统计 _dt 落在该窗内的随访记录。详见「0_窗口信息」sheet。',
         '',
         '【脱落率A·滚动】基准月M-2有购药、观察窗M-1∪M无购药→脱落。月度口径，窗内取月均。',

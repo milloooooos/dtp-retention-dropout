@@ -19,9 +19,11 @@ print(followup['一级分类'].value_counts(dropna=False).to_string())
 print('\n随访 脱落原因分类代码 TOP:')
 print(followup['脱落原因分类代码'].value_counts(dropna=False).head(12).to_string())
 
-for preset in ['H1_2026', 'roll1y', 'full']:
+for preset, cs, ce in [('H1_2026', None, None), ('roll1y', None, None), ('full', None, None),
+                        ('custom', '2026-01-01', '2026-07-31')]:
     print('\n################## PRESET = %s ##################' % preset)
-    res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True, preset=preset)
+    res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True,
+                         preset=preset, custom_start=cs, custom_end=ce)
     print('window_info:')
     print(res.get('window_info').to_string(index=False))
     print('\n===== 脱落率B 分品种 (终点=窗口终点) =====')
