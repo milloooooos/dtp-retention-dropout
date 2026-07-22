@@ -25,6 +25,7 @@ with st.sidebar:
                            help='按 姓名+品种+首购月 近似匹配销售脱落患者与随访原因；同名歧义大，置信度低，仅供参考')
     st.divider()
     run = st.button('🚀 运行分析', type='primary', use_container_width=True)
+    st.caption(f'引擎版本 {E.APP_VERSION}')
 
 # ---------------- 文件上传 ----------------
 col1, col2, col3 = st.columns(3)
@@ -232,37 +233,45 @@ dcol1, dcol2 = st.columns(2)
 with dcol1:
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine='openpyxl') as xw:
-        res['window_info'].to_excel(xw, sheet_name='0_窗口信息', index=False)
-        res['retention_overall'].to_excel(xw, sheet_name='1_留存率口径1_仅购药_整体', index=False)
-        res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率口径1_仅购药_分品种', index=False)
-        res['retention_cov_overall'].to_excel(xw, sheet_name='1b_留存率口径2_覆盖_整体', index=False)
-        res['retention_cov_by_brand'].to_excel(xw, sheet_name='2b_留存率口径2_覆盖_分品种', index=False)
-        res['retention_by_brand_pharmacy'].to_excel(xw, sheet_name='2c_留存率_分品种×药房', index=False)
-        res['dropout_A']['整体_月度'].to_excel(xw, sheet_name='3_脱落率A_整体', index=False)
-        if '分品种_月度' in res['dropout_A']:
-            res['dropout_A']['分品种_月度'].to_excel(xw, sheet_name='4_脱落率A_分品种', index=False)
-        res['dropout_B_by_brand'].to_excel(xw, sheet_name='5_脱落率B_分品种', index=False)
-        res['dropout_B_established_by_brand'].to_excel(xw, sheet_name='5b_脱落率B_已观察', index=False)
-        if 'crossref_brand' in res:
-            res['crossref_brand'].to_excel(xw, sheet_name='6_跨表关联_品牌', index=False)
-        if 'dropout_reason_by_pharmacy' in res:
-            res['dropout_reason_by_pharmacy'].to_excel(xw, sheet_name='6b_脱落原因_药房×品种', index=False)
-        if 'crossref_patient' in res:
-            res['crossref_patient'].to_excel(xw, sheet_name='7_跨表关联_患者级', index=False)
-        res['action_map'].to_excel(xw, sheet_name='8_行动建议', index=False)
-        res['dot_decomposition'].to_excel(xw, sheet_name='10_DOT分解', index=False)
-        res['new_patient_monthly'].to_excel(xw, sheet_name='11_新患月度趋势', index=False)
-        res['new_patient_pharmacy_decline'].to_excel(xw, sheet_name='12_新患下降最大药房', index=False)
-        res['old_patient_multi_box'].to_excel(xw, sheet_name='13_老患多盒行为', index=False)
-        res['repurchase_decomposition'].to_excel(xw, sheet_name='14_复购率分解', index=False)
-        res['hospital_dimension'].to_excel(xw, sheet_name='15_医院维度', index=False)
-        res['doctor_top1'].to_excel(xw, sheet_name='16_医生维度_最大患者量', index=False)
-        res['doctor_top5'].to_excel(xw, sheet_name='17_医生维度_TOP5', index=False)
-        res['doctor_low_dot_watch'].to_excel(xw, sheet_name='18_医生维度_低DOT重点', index=False)
-        res['pharmacy_dimension'].to_excel(xw, sheet_name='19_项目药房_风险', index=False)
-        res['drill_hospital_doctor'].to_excel(xw, sheet_name='20_钻取_异常医院拖后腿医生', index=False)
-        res['communication_list'].to_excel(xw, sheet_name='21_重点关注清单', index=False)
-        res['improvement_actions'].to_excel(xw, sheet_name='22_改进措施与责任', index=False)
+        # 单表：存在且非空才写出（防御式，避免个别 key 缺失导致整页崩溃）
+        _single = [
+            ('window_info', '0_窗口信息'),
+            ('retention_overall', '1_留存率口径1_仅购药_整体'),
+            ('retention_by_brand', '2_留存率口径1_仅购药_分品种'),
+            ('retention_by_brand_pharmacy', '2c_留存率_分品种×药房'),
+            ('retention_cov_overall', '1b_留存率口径2_覆盖_整体'),
+            ('retention_cov_by_brand', '2b_留存率口径2_覆盖_分品种'),
+            ('dropout_B_by_brand', '5_脱落率B_分品种'),
+            ('dropout_B_established_by_brand', '5b_脱落率B_已观察'),
+            ('crossref_brand', '6_跨表关联_品牌'),
+            ('dropout_reason_by_pharmacy', '6b_脱落原因_药房×品种'),
+            ('crossref_patient', '7_跨表关联_患者级'),
+            ('action_map', '8_行动建议'),
+            ('dot_decomposition', '10_DOT分解'),
+            ('new_patient_monthly', '11_新患月度趋势'),
+            ('new_patient_pharmacy_decline', '12_新患下降最大药房'),
+            ('old_patient_multi_box', '13_老患多盒行为'),
+            ('repurchase_decomposition', '14_复购率分解'),
+            ('hospital_dimension', '15_医院维度'),
+            ('doctor_top1', '16_医生维度_最大患者量'),
+            ('doctor_top5', '17_医生维度_TOP5'),
+            ('doctor_low_dot_watch', '18_医生维度_低DOT重点'),
+            ('pharmacy_dimension', '19_项目药房_风险'),
+            ('drill_hospital_doctor', '20_钻取_异常医院拖后腿医生'),
+            ('communication_list', '21_重点关注清单'),
+            ('improvement_actions', '22_改进措施与责任'),
+        ]
+        for _k, _n in _single:
+            _df = res.get(_k)
+            if isinstance(_df, pd.DataFrame) and not _df.empty:
+                _df.to_excel(xw, sheet_name=_n, index=False)
+        # 字典型（脱落率A）
+        _da = res.get('dropout_A')
+        if isinstance(_da, dict):
+            if isinstance(_da.get('整体_月度'), pd.DataFrame) and not _da['整体_月度'].empty:
+                _da['整体_月度'].to_excel(xw, sheet_name='3_脱落率A_整体', index=False)
+            if isinstance(_da.get('分品种_月度'), pd.DataFrame) and not _da['分品种_月度'].empty:
+                _da['分品种_月度'].to_excel(xw, sheet_name='4_脱落率A_分品种', index=False)
     buf.seek(0)
     st.download_button('⬇️ 下载完整 Excel 报告', buf,
                        'DTP_完整复盘分析.xlsx',
