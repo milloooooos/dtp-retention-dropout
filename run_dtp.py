@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""本地批量运行 dtp_engine，产出 Excel 分析报告（留存率/脱落率A/脱落率B/跨表原因）。"""
+"""本地批量运行 dtp_engine，产出 Excel 分析报告（留存率/脱落率A·B/复购率A·B/跨表原因）。"""
 import pandas as pd, os, argparse
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import dtp_engine as E
@@ -49,6 +49,13 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         '',
         '【脱落率B·累计沉默】末次购药距窗口终点 > 3×用药间隔→真停药。新近患者(首购在终点前3×间隔内)',
         '  免除右删失，故另给"已观察%"列（仅统计有充分观察期的患者）。',
+        '',
+        '【复购率A·滚动】M-2有购药、M-1∪M仍有购药→复购。月度口径，窗内取月均；分全量/老患（sheet 14_复购率分解）。',
+        '',
+        '【复购率B·结合用药周期】每个首购患者，若二次购药距首购 ≤ 3×用药间隔(品种)→按周期复购(on-cycle)。',
+        '  与脱落率B共用 mult 与窗口终点；新近首购患者(观察期不足)同样右删失，另给"已观察%"列。',
+        '  两列并行：复购率B%(全部首购患者) vs 复购率B_已观察%(剔除右删失，更可靠)。见 sheet 14b/14c。',
+        '  注：复购率B 与 (1−脱落率B) 不是同一指标——前者看"首购→二购是否在周期内"，后者看"末次购药是否太久未续"。',
         '',
         '【跨表关联】销售算出的脱落患者 → 随访表的脱落原因(细分类框架 + 一级分类)。',
         '  两表无共同患者主键，故：① 品牌层面关联为主(可靠)；② 患者级用复合键「姓名||药房全称」匹配',
@@ -101,6 +108,8 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
     res['new_patient_pharmacy_decline'].to_excel(xw, sheet_name='12_新患下降最大药房', index=False)
     res['old_patient_multi_box'].to_excel(xw, sheet_name='13_老患多盒行为', index=False)
     res['repurchase_decomposition'].to_excel(xw, sheet_name='14_复购率分解', index=False)
+    res['repurchase_B_by_brand'].to_excel(xw, sheet_name='14b_复购率B_分品种', index=False)
+    res['repurchase_B_established_by_brand'].to_excel(xw, sheet_name='14c_复购率B_已观察', index=False)
     res['hospital_dimension'].to_excel(xw, sheet_name='15_医院维度', index=False)
     res['doctor_top1'].to_excel(xw, sheet_name='16_医生维度_最大患者量', index=False)
     res['doctor_top5'].to_excel(xw, sheet_name='17_医生维度_TOP5', index=False)

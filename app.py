@@ -187,8 +187,16 @@ with tabs[3]:
     with c2:
         st.subheader('老患多盒行为')
         st.dataframe(res['old_patient_multi_box'], use_container_width=True, height=300)
-    st.subheader('复购率分解')
+    st.subheader('复购率 A（滚动口径）')
+    st.caption('M-2 有购药的患者中，M-1∪M 仍有购药的比例，按月平均；分全量/老患。')
     st.dataframe(res['repurchase_decomposition'], use_container_width=True, height=260)
+    st.subheader('复购率 B（结合用药周期 · 首购→二购 on-cycle）')
+    st.caption('二购距首购 ≤ 3×用药间隔(品种) → 按周期复购。「已观察%」仅统计首购在终点前 3×间隔内的患者，剔除新近右删失（与脱落率B的 established 逻辑一致）。')
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('**全部首购患者**'); st.dataframe(res['repurchase_B_by_brand'], use_container_width=True)
+    with c2:
+        st.markdown('**已观察患者（剔除右删失）**'); st.dataframe(res['repurchase_B_established_by_brand'], use_container_width=True)
     st.subheader('项目药房新患变化（本期 vs 上期）')
     st.dataframe(res['new_patient_pharmacy_decline'], use_container_width=True, height=300)
 

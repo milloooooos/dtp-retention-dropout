@@ -60,5 +60,17 @@ if dd_h1 is not None and dd_cu is not None and not dd_h1.empty:
     print(m.to_string(index=False))
     print('=> 两者皆为「窗口终点前推1年」固定窗,量级应接近(差异<=1-2盒属正常区间错位);不再是短窗机械压低')
 
+print('\n===== 复购率B (结合用药周期 / 首购→二购 on-cycle) =====')
+rb = r_h1.get('repurchase_B_by_brand')
+rbe = r_h1.get('repurchase_B_established_by_brand')
+print('复购率B 分品种(全量首购患者):')
+print(rb.to_string(index=False) if rb is not None and not rb.empty else 'EMPTY')
+print('复购率B 已观察(剔除右删失):')
+print(rbe.to_string(index=False) if rbe is not None and not rbe.empty else 'EMPTY')
+assert rb is not None and not rb.empty, '复购率B 分品种为空!'
+assert (rb['按周期复购数'] <= rb['首购患者数']).all(), '复购率B: 按周期复购数 > 首购患者数!'
+assert (rbe['已观察_按周期复购数'] <= rbe['已观察患者数']).all(), '复购率B: 已观察按周期数 > 已观察患者数!'
+print('=> 复购率B 校验通过(on_cycle<=total, 已观察<=total);注意复购率B≠(1-脱落率B)')
+
 print('\nALL KEYS:', sorted(res.keys()))
 print('\nSMOKE TEST OK')
