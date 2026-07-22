@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+envs/
+
+# 本地数据与输出（含患者敏感信息，勿上传）
+output/
+*.xlsx
+*.xls
+*.csv
+downloads/
+E:/下载内容/
+F:/厂家项目/
+
+# 临时
+/tmp/
+*.log
+.DS_Store
