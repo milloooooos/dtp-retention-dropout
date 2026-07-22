@@ -195,16 +195,16 @@ with tabs[7]:
         dd = res.get('dropout_reason_detail')
         if dd is not None and not dd.empty:
             st.dataframe(dd, use_container_width=True, height=320)
-        dl = res.get('dropout_reason_lvl1'); dc = res.get('dropout_reason_ctrl')
+        dl = res.get('dropout_reason_lvl1')
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown('**一级分类汇总（医生/患者/其他）**')
+            st.markdown('**一级分类汇总（医生相关/患者相关/其他）**')
             if dl is not None and not dl.empty:
                 st.dataframe(dl, use_container_width=True)
         with c2:
-            st.markdown('**可控 / 不可控 汇总**')
-            if dc is not None and not dc.empty:
-                st.dataframe(dc, use_container_width=True)
+            st.markdown('**细分原因分布**')
+            if dd is not None and not dd.empty:
+                st.dataframe(dd[['脱落原因细类', '记录数', '占比%']], use_container_width=True)
         dmeta = res.get('dropout_reason_meta')
         if isinstance(dmeta, dict):
             st.info(f"覆盖提示：随访总记录 {dmeta.get('随访总记录')}；有记载原因 {dmeta.get('有原因记录')} 条；"
@@ -212,7 +212,7 @@ with tabs[7]:
         # ---- 品牌层面 ----
         if 'crossref_brand' in res:
             st.subheader('跨表关联 · 品牌层面（可靠）')
-            st.caption('左：销售各品种脱落B人数/率；右：随访各品种脱落原因可控占比。')
+            st.caption('左：销售各品种脱落B人数/率；右：随访各品种脱落原因按一级分类（医生/患者/其他）构成。')
             st.dataframe(res['crossref_brand'], use_container_width=True)
         # ---- 覆盖率概览 + 低匹配报警 ----
         cov = res.get('crossref_coverage')
@@ -236,7 +236,7 @@ with tabs[7]:
             st.subheader('跨表关联 · 患者级（姓名+药房 复合键 · 含双视角）')
             st.caption('最新一次=当前状态(可能正常)；最近一次有原因=有记载的脱落原因。两列差值处即"最新正常但曾有脱落原因"。')
             cols = [c for c in ['患者姓名', '品牌', '药房', '关联方式', '最新一次分类',
-                                '脱落原因(随访)', '脱落原因分类', '一级分类', '原因类', '距终点天']
+                                '脱落原因(随访)', '脱落原因分类', '一级分类', '距终点天']
                      if c in cp.columns]
             st.dataframe(cp[cols], use_container_width=True, height=360)
         # ---- 脱落原因 × 药房 × 品种 ----
