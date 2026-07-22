@@ -87,34 +87,16 @@ tabs = st.tabs(['📈 留存率', '🔁 脱落率A', '💤 脱落率B', '📊 DO
                 '🎯 沟通改进', '📋 说明'])
 
 # ===== 留存率 =====
-def _retention_heatmap(r, title):
-    cols = [c for c in r.columns if '留存' in c]
-    fig, ax = plt.subplots(figsize=(min(2 + len(cols), 16), max(4, len(r) * 0.28)))
-    data = r[cols].fillna(np.nan).values.astype(float)
-    im = ax.imshow(data, aspect='auto', cmap='YlGnBu', vmin=0, vmax=100)
-    ax.set_xticks(range(len(cols))); ax.set_xticklabels(cols, rotation=45, ha='right')
-    ax.set_yticks(range(len(r))); ax.set_yticklabels(r['首购月'])
-    for i in range(len(r)):
-        for j in range(len(cols)):
-            v = data[i, j]
-            if not np.isnan(v):
-                ax.text(j, i, f'{v:.0f}', ha='center', va='center', fontsize=7,
-                        color='white' if v < 50 else 'black')
-    ax.set_title(title)
-    fig.colorbar(im, ax=ax, fraction=0.025)
-    return fig
-
 with tabs[0]:
     st.subheader('新患留存率 Cohort（按首购月分群）· 两套口径')
     cal = st.radio('留存口径', ['口径1｜仅看购药时间', '口径2｜结合说明书盒数覆盖'],
                    horizontal=True, key='ret_cal')
     if cal.startswith('口径1'):
         st.caption('Mk留存% = 该首购月新患中，在第 k 月「当月有购药」的占比。多盒购买会使曲线非单调递减；近期 cohort 窗口不足显示为空。')
-        r = res['retention_overall']; rb = res['retention_by_brand']; ttl = '留存率(仅购药时间) 热力图 (%)'
+        r = res['retention_overall']; rb = res['retention_by_brand']
     else:
         st.caption('Mk留存% = 每次购药覆盖=销售数量×每盒天数(说明书) 天，覆盖区间与第 k 月有交集即算留存。曲线更平滑更单调，更贴近真实在治率。')
-        r = res['retention_cov_overall']; rb = res['retention_cov_by_brand']; ttl = '留存率(盒数覆盖) 热力图 (%)'
-    st.pyplot(_retention_heatmap(r, ttl))
+        r = res['retention_cov_overall']; rb = res['retention_cov_by_brand']
     st.dataframe(r, use_container_width=True, height=420)
     st.subheader('分品种留存率')
     st.dataframe(rb, use_container_width=True, height=300)
