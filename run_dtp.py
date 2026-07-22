@@ -19,7 +19,7 @@ followup = E.load_followup([F25, F26])
 print(f'  销售: {len(sales)} 行, 患者 {sales["患者ID"].nunique()}, 时间 {sales["销售时间"].min().date()}~{sales["销售时间"].max().date()}')
 print(f'  随访: {len(followup)} 行, 状态类分布 {followup["状态类"].value_counts().to_dict()}')
 
-res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True)
+res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True, preset='H1_2026')
 
 xlsx = os.path.join(OUT, 'DTP_留存率与脱落分析_v1.xlsx')
 with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
@@ -34,9 +34,13 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         '  口径2(结合说明书盒数覆盖)：每次购药覆盖=销售数量×每盒天数(说明书) 天，覆盖区间与第k月有交集即算留存。',
         '    特点：把囤药者的"在治"状态计入，曲线更平滑、更单调，更贴近真实在治率。两套对比看差值=囤药/断续行为。',
         '',
-        '【脱落率A·滚动】基准月M-2有购药、观察窗M-1∪M无购药→脱落。月度口径，H1取月均。',
+        '【统一时间窗】本报告所有指标(留存/脱落率B/脱落原因/DOT/新患同比/医生医院药房维度)共用一个时间窗，',
+        '  由 run_analysis 的 preset 决定（本脚本默认 H1_2026 = 2026-01-01~2026-06-30；另可选 roll1y 回滚1年 / full 全量累计）。',
+        '  脱落率B的判定终点=该窗终点(如 H1 为 2026-06-30)；脱落原因只统计 _dt 落在该窗内的随访记录。详见「0_窗口信息」sheet。',
         '',
-        '【脱落率B·累计沉默】末次购药距数据终点 > 3×用药间隔→真停药。新近患者(首购在终点前3×间隔内)',
+        '【脱落率A·滚动】基准月M-2有购药、观察窗M-1∪M无购药→脱落。月度口径，窗内取月均。',
+        '',
+        '【脱落率B·累计沉默】末次购药距窗口终点 > 3×用药间隔→真停药。新近患者(首购在终点前3×间隔内)',
         '  免除右删失，故另给"已观察%"列（仅统计有充分观察期的患者）。',
         '',
         '【跨表关联】销售算出的脱落患者 → 随访表的脱落原因(细分类框架 + 一级分类)。',
@@ -54,6 +58,8 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         '  归因维度仅用「细分类 + 一级分类」，不引入可控/不可控标签。',
     ]})
     notes.to_excel(xw, sheet_name='说明', index=False)
+    if 'window_info' in res:
+        res['window_info'].to_excel(xw, sheet_name='0_窗口信息', index=False)
     res['retention_overall'].to_excel(xw, sheet_name='1_留存率口径1_仅购药_整体', index=False)
     res['retention_by_brand'].to_excel(xw, sheet_name='2_留存率口径1_仅购药_分品种', index=False)
     res['retention_cov_overall'].to_excel(xw, sheet_name='1b_留存率口径2_盒数覆盖_整体', index=False)
@@ -72,6 +78,7 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         res['dropout_reason_by_pharmacy'].to_excel(xw, sheet_name='7b_脱落原因_药房×品种', index=False)
     for _k, _n in [('dropout_reason_detail', '7b1_脱落原因_细分类分布'),
                    ('dropout_reason_lvl1', '7b2_脱落原因_一级汇总'),
+                   ('dropout_reason_by_brand', '7b2b_脱落原因_按品种拆分'),
                    ('dropout_reason_meta', '7b3_脱落原因_覆盖概览'),
                    ('crossref_coverage', '8a_跨表覆盖率概览'),
                    ('patient_level_detail', '8b_患者级双视角明细')]:

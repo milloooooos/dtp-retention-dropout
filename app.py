@@ -21,6 +21,12 @@ with st.sidebar:
     st.header('⚙️ 分析参数')
     max_k = st.slider('留存追踪月数 (M1~Mk)', 3, 18, 12, help='追踪新患 cohort 后续多少个月的留存')
     mult = st.slider('脱落率B 倍数 (×用药间隔)', 2, 6, 3, help='末次购药距终点 > N×用药间隔 判为真停药；填3≈药吃完后再空2个周期')
+    preset = st.selectbox('时间窗预设', ['H1_2026', 'roll1y', 'full'], index=0,
+                          format_func=lambda x: {'H1_2026': 'H1 2026（2026-01-01~06-30）',
+                                                 'roll1y': '回滚1年（末次数据日往前1年）',
+                                                 'full': '全量累计（首笔~末笔销售）'}[x],
+                          help='整个报告的统一时间窗：留存/脱落率B终点/脱落原因/DOT/新患同比 都按此窗计算。'
+                               '选「H1 2026」则脱落率B终点=2026-06-30，脱落原因只统计该窗内随访记录。')
     with_pat = st.checkbox('输出「患者级」跨表关联', value=True,
                            help='按 姓名+药房 复合键匹配销售脱落患者与随访原因；同人不同药房视为不同人(防重名串号)，置信度仍受同名影响，仅供参考')
     st.divider()
@@ -75,7 +81,7 @@ with st.spinner('计算中…'):
         except Exception as e:
             st.warning(f'随访表读取失败，将仅输出留存率/脱落率（无跨表原因）：{e}')
             followup = None
-    res = E.run_analysis(sales, followup, max_k=max_k, mult=mult, with_patient_crossref=with_pat)
+    res = E.run_analysis(sales, followup, max_k=max_k, mult=mult, with_patient_crossref=with_pat, preset=preset)
 
 sales_info = (f'销售 {len(sales):,} 行 / 患者 {sales["患者ID"].nunique():,} / '
               f'{sales["销售时间"].min().date()}~{sales["销售时间"].max().date()}'
@@ -189,6 +195,13 @@ with tabs[6]:
 # ===== 跨表原因 =====
 with tabs[7]:
     if 'crossref_brand' in res or 'dropout_reason_detail' in res:
+        # ---- 当前时间窗 ----
+        wi = res.get('window_info')
+        if wi is not None and not wi.empty:
+            w = wi.iloc[0]
+            st.info(f"当前时间窗预设：**{w.get('时间窗预设')}** ｜ 本期 {w.get('本期窗口起点')} ~ {w.get('本期窗口终点')}"
+                     + (f" ｜ 同比 {w.get('上期窗口起点')} ~ {w.get('上期窗口终点')}" if w.get('上期窗口起点') else "（无同比）")
+                     + "。脱落率B终点与脱落原因统计均按此窗。")
         # ---- 修正后：脱落原因细分类框架 ----
         st.subheader('脱落原因分类（修正后 · 细分类框架）')
         st.caption('基于 churn_logic：医生相关 → 患者相关 → 其他，统一兜底；「空原因」≠ 无脱落（单独计数，不混入任何细类）。')
@@ -204,11 +217,17 @@ with tabs[7]:
         with c2:
             st.markdown('**细分原因分布**')
             if dd is not None and not dd.empty:
-                st.dataframe(dd[['脱落原因细类', '记录数', '占比%']], use_container_width=True)
+                st.dataframe(dd[['脱落原因细类', '记录数', '占窗内%']], use_container_width=True)
         dmeta = res.get('dropout_reason_meta')
         if isinstance(dmeta, dict):
-            st.info(f"覆盖提示：随访总记录 {dmeta.get('随访总记录')}；有记载原因 {dmeta.get('有原因记录')} 条；"
-                     f"空原因（随访员未填，≠无脱落）{dmeta.get('无原因记录')} 条（占 {dmeta.get('无原因占比%')}%）。")
+            st.info(f"覆盖提示（窗内）：随访记录 {dmeta.get('随访窗内总记录')}；有记载原因 {dmeta.get('窗内有原因记录')} 条；"
+                     f"空原因（随访员未填，≠无脱落）{dmeta.get('窗内无原因记录')} 条（占 {dmeta.get('窗内无原因占比%')}%）。")
+        # ---- 按品种拆分 ----
+        drb = res.get('dropout_reason_by_brand')
+        if drb is not None and not drb.empty:
+            st.subheader('脱落原因分布 · 按品种拆分汇总')
+            st.caption('每个品种的脱落原因细类构成（占该品种%），用于定位某品种主导的脱落原因。')
+            st.dataframe(drb, use_container_width=True, height=360)
         # ---- 品牌层面 ----
         if 'crossref_brand' in res:
             st.subheader('跨表关联 · 品牌层面（可靠）')
