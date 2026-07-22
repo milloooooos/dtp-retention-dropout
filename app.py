@@ -21,8 +21,8 @@ with st.sidebar:
     st.header('⚙️ 分析参数')
     max_k = st.slider('留存追踪月数 (M1~Mk)', 3, 18, 12, help='追踪新患 cohort 后续多少个月的留存')
     mult = st.slider('脱落率B 倍数 (×用药间隔)', 2, 6, 3, help='末次购药距终点 > N×用药间隔 判为真停药；填3≈药吃完后再空2个周期')
-    with_pat = st.checkbox('输出「近似患者级」跨表关联', value=True,
-                           help='按 姓名+品种+首购月 近似匹配销售脱落患者与随访原因；同名歧义大，置信度低，仅供参考')
+    with_pat = st.checkbox('输出「患者级」跨表关联', value=True,
+                           help='按 姓名+药房 复合键匹配销售脱落患者与随访原因；同人不同药房视为不同人(防重名串号)，置信度仍受同名影响，仅供参考')
     st.divider()
     run = st.button('🚀 运行分析', type='primary', use_container_width=True)
     st.caption(f'引擎版本 {getattr(E, "APP_VERSION", "未知(引擎缓存旧版,请Redeploy)")}')
@@ -188,19 +188,61 @@ with tabs[6]:
 
 # ===== 跨表原因 =====
 with tabs[7]:
-    if 'crossref_brand' in res:
-        st.subheader('跨表关联 · 品牌层面（可靠）')
-        st.caption('左：销售算出的各品种脱落B人数/率；右：随访表各品种脱落原因的可控占比。')
-        st.dataframe(res['crossref_brand'], use_container_width=True)
+    if 'crossref_brand' in res or 'dropout_reason_detail' in res:
+        # ---- 修正后：脱落原因细分类框架 ----
+        st.subheader('脱落原因分类（修正后 · 细分类框架）')
+        st.caption('基于 churn_logic：医生相关 → 患者相关 → 其他，统一兜底；「空原因」≠ 无脱落（单独计数，不混入任何细类）。')
+        dd = res.get('dropout_reason_detail')
+        if dd is not None and not dd.empty:
+            st.dataframe(dd, use_container_width=True, height=320)
+        dl = res.get('dropout_reason_lvl1'); dc = res.get('dropout_reason_ctrl')
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('**一级分类汇总（医生/患者/其他）**')
+            if dl is not None and not dl.empty:
+                st.dataframe(dl, use_container_width=True)
+        with c2:
+            st.markdown('**可控 / 不可控 汇总**')
+            if dc is not None and not dc.empty:
+                st.dataframe(dc, use_container_width=True)
+        dmeta = res.get('dropout_reason_meta')
+        if isinstance(dmeta, dict):
+            st.info(f"覆盖提示：随访总记录 {dmeta.get('随访总记录')}；有记载原因 {dmeta.get('有原因记录')} 条；"
+                     f"空原因（随访员未填，≠无脱落）{dmeta.get('无原因记录')} 条（占 {dmeta.get('无原因占比%')}%）。")
+        # ---- 品牌层面 ----
+        if 'crossref_brand' in res:
+            st.subheader('跨表关联 · 品牌层面（可靠）')
+            st.caption('左：销售各品种脱落B人数/率；右：随访各品种脱落原因可控占比。')
+            st.dataframe(res['crossref_brand'], use_container_width=True)
+        # ---- 覆盖率概览 + 低匹配报警 ----
+        cov = res.get('crossref_coverage')
+        if cov is not None and not cov.empty:
+            low = cov.attrs.get('low_match', False)
+            if low:
+                st.error(f"⚠️ 销售脱落患者与随访表匹配率仅 {cov.attrs.get('match_rate', 0) * 100:.0f}%（<30%）。"
+                         "这两张表很可能不是同一批患者（药品/项目/时间段不同），请核对后再引用患者级结论。")
+            else:
+                st.success(f"✅ 患者级匹配率 {cov.attrs.get('match_rate', 0) * 100:.0f}%（分母=销售脱落B患者）。")
+            st.subheader('跨表覆盖率概览')
+            st.dataframe(cov, use_container_width=True, height=200)
+        # ---- 患者级双视角明细（随访侧） ----
+        pld = res.get('patient_level_detail')
+        if pld is not None and not pld.empty:
+            with st.expander('👥 患者级双视角明细（随访侧：最新一次 vs 最近一次有原因）'):
+                st.dataframe(pld, use_container_width=True, height=360)
+        # ---- 患者级跨表 ----
         if 'crossref_patient' in res:
             cp = res['crossref_patient']
-            m = cp.attrs.get('matched', 0); t = cp.attrs.get('total', 0)
-            st.subheader(f'跨表关联 · 近似患者级（置信度低，匹配 {m}/{t} = {m / max(t, 1) * 100:.0f}%）')
-            st.caption('按 姓名+品种+首购月 近似匹配；同名歧义大，仅供线索排查。')
-            st.dataframe(cp, use_container_width=True, height=360)
+            st.subheader('跨表关联 · 患者级（姓名+药房 复合键 · 含双视角）')
+            st.caption('最新一次=当前状态(可能正常)；最近一次有原因=有记载的脱落原因。两列差值处即"最新正常但曾有脱落原因"。')
+            cols = [c for c in ['患者姓名', '品牌', '药房', '关联方式', '最新一次分类',
+                                '脱落原因(随访)', '脱落原因分类', '一级分类', '原因类', '距终点天']
+                     if c in cp.columns]
+            st.dataframe(cp[cols], use_container_width=True, height=360)
+        # ---- 脱落原因 × 药房 × 品种 ----
         if 'dropout_reason_by_pharmacy' in res:
-            st.subheader('脱落原因 × 药房 × 品种（汇总·已匹配患者）')
-            st.caption('仅统计成功匹配到随访原因的脱落患者；原因类=可控/不可控/其他。用于把改进措施落到具体药房品种。')
+            st.subheader('脱落原因 × 药房 × 品种（汇总 · 已匹配患者）')
+            st.caption('仅统计匹配到随访原因的销售脱落患者；用于把改进措施落到具体药房品种与原因细类。')
             st.dataframe(res['dropout_reason_by_pharmacy'], use_container_width=True, height=320)
     else:
         st.info('未上传随访表，无跨表脱落原因。')
@@ -244,8 +286,11 @@ with dcol1:
             ('dropout_B_by_brand', '5_脱落率B_分品种'),
             ('dropout_B_established_by_brand', '5b_脱落率B_已观察'),
             ('crossref_brand', '6_跨表关联_品牌'),
+            ('dropout_reason_detail', '7a_脱落原因_细分类分布'),
             ('dropout_reason_by_pharmacy', '6b_脱落原因_药房×品种'),
-            ('crossref_patient', '7_跨表关联_患者级'),
+            ('crossref_coverage', '7b_跨表覆盖率概览'),
+            ('patient_level_detail', '7c_患者级双视角明细'),
+            ('crossref_patient', '8_跨表关联_患者级'),
             ('action_map', '8_行动建议'),
             ('dot_decomposition', '10_DOT分解'),
             ('new_patient_monthly', '11_新患月度趋势'),

@@ -39,12 +39,19 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         '【脱落率B·累计沉默】末次购药距数据终点 > 3×用药间隔→真停药。新近患者(首购在终点前3×间隔内)',
         '  免除右删失，故另给"已观察%"列（仅统计有充分观察期的患者）。',
         '',
-        '【跨表关联】销售算出的脱落患者 → 随访表的脱落原因(可控/不可控映射)。',
-        '  两表无共同患者主键(会员号格式不同)，故：① 品牌层面关联为主(可靠)；② 近似患者级(姓名+品种+首购月)',
-        '  仅作补充，同名歧义大、匹配率有限，置信度低。',
+        '【跨表关联】销售算出的脱落患者 → 随访表的脱落原因(细分类框架+可控/不可控派生)。',
+        '  两表无共同患者主键，故：① 品牌层面关联为主(可靠)；② 患者级用复合键「姓名||药房全称」匹配',
+        '  (同人不同药房视为不同人，防重名串号)；同名歧义仍存，置信度有限，仅供参考。',
+        '  覆盖率：分母=销售脱落B患者；分子=随访表匹配上；其中区分「有记载原因」与「有记录但原因未填」。',
+        '  低匹配率(<30%)报警：两张表很可能不是同一批患者(药品/项目/时间段不同)。',
+        '  空原因≠无脱落：空原因单独计数，不混入任何细类。',
         '  随访表不含优赫得(0行)，故优赫得跨表原因为空(覆盖缺口，非错误)。',
         '',
-        '【脱落映射】原因→可控/不可控分类规则见 action_map 及 dtp_engine.classify_reason。',
+        '【脱落原因分类·修正后】采用 dtp-churn-analyzer 的 churn_logic 框架：',
+        '  10 个细类 + 一级(医生相关/患者相关/其他)，四原则(精确优先→关键词兜底→自上而下分区互斥→统一兜底)。',
+        '  关键修正：医嘱相关(如"遵医嘱停药")优先于"自主停药/认知不足"判定，避免医生原因漏给"患者自主停药"。',
+        '  可控/不可控为叠加派生层：医生医嘱(1/2/3)+去世(7)=不可控；不良反应/认知/经济/换渠道/联系失败(4/5/6/8/9)=可控。',
+        '  细分类规则集中维护在 churn_logic.py，换项目只改该文件常量即可，统计逻辑不变。',
     ]})
     notes.to_excel(xw, sheet_name='说明', index=False)
     res['retention_overall'].to_excel(xw, sheet_name='1_留存率口径1_仅购药_整体', index=False)
@@ -63,6 +70,14 @@ with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:
         res['crossref_brand'].to_excel(xw, sheet_name='7_跨表关联_品牌层面', index=False)
     if 'dropout_reason_by_pharmacy' in res:
         res['dropout_reason_by_pharmacy'].to_excel(xw, sheet_name='7b_脱落原因_药房×品种', index=False)
+    for _k, _n in [('dropout_reason_detail', '7b1_脱落原因_细分类分布'),
+                   ('dropout_reason_lvl1', '7b2_脱落原因_一级汇总'),
+                   ('dropout_reason_ctrl', '7b3_脱落原因_可控性汇总'),
+                   ('crossref_coverage', '8a_跨表覆盖率概览'),
+                   ('patient_level_detail', '8b_患者级双视角明细')]:
+        _df = res.get(_k)
+        if isinstance(_df, pd.DataFrame) and not _df.empty:
+            _df.to_excel(xw, sheet_name=_n, index=False)
     if 'crossref_patient' in res:
         res['crossref_patient'].to_excel(xw, sheet_name='8_跨表关联_患者级近似', index=False)
     res['action_map'].to_excel(xw, sheet_name='9_可控脱落行动建议', index=False)
