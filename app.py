@@ -25,7 +25,7 @@ with st.sidebar:
                            help='按 姓名+品种+首购月 近似匹配销售脱落患者与随访原因；同名歧义大，置信度低，仅供参考')
     st.divider()
     run = st.button('🚀 运行分析', type='primary', use_container_width=True)
-    st.caption(f'引擎版本 {E.APP_VERSION}')
+    st.caption(f'引擎版本 {getattr(E, "APP_VERSION", "未知(引擎缓存旧版,请Redeploy)")}')
 
 # ---------------- 文件上传 ----------------
 col1, col2, col3 = st.columns(3)
