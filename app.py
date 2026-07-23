@@ -48,7 +48,7 @@ with st.sidebar:
                            help='按 姓名+药房 复合键匹配销售脱落患者与随访原因；同人不同药房视为不同人(防重名串号)，置信度仍受同名影响，仅供参考')
     st.divider()
     run = st.button('🚀 运行分析', type='primary', use_container_width=True)
-    st.caption(f'引擎版本 {getattr(E, "APP_VERSION", "未知(引擎缓存旧版,请Redeploy)")}')
+    st.caption(f'引擎版本 {getattr(E, "APP_VERSION", "未知(云端引擎为旧版缓存)")} · 若不是最新版请 Clear cache + Rebuild')
 
 # ---------------- 文件上传 ----------------
 col1, col2, col3 = st.columns(3)
@@ -81,9 +81,19 @@ followup_paths = [save_tmp(f) for f in followup_files] if followup_files else No
 top_path = save_tmp(top_file) if top_file else None
 
 # 销售表 sheet 选择（自动识别，可手动覆盖）
-sales_sheets = E.list_sales_sheets(sales_path)
+# getattr 兜底：若云端引擎版本较旧(未含 list_sales_sheets/_resolve_sales_sheet)，
+# 自动降级为不显示下拉、直接以 '底表' 解析，避免 AttributeError 导致整个 app 崩溃。
+_list_sheets = getattr(E, 'list_sales_sheets', None)
+_resolve_sheet = getattr(E, '_resolve_sales_sheet', None)
+if _list_sheets is not None and _resolve_sheet is not None:
+    try:
+        sales_sheets = _list_sheets(sales_path)
+    except Exception:
+        sales_sheets = []
+else:
+    sales_sheets = []
 if len(sales_sheets) > 1:
-    _resolved = E._resolve_sales_sheet(sales_path, '底表')
+    _resolved = _resolve_sheet(sales_path, '底表') if _resolve_sheet else '底表'
     _idx = sales_sheets.index(_resolved) if _resolved in sales_sheets else 0
     sales_sheet = st.selectbox('销售表所在工作表', sales_sheets, index=_idx,
                                help='自动识别数据所在 sheet；若识别有误可手动切换。')
