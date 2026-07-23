@@ -8,6 +8,8 @@ parser = argparse.ArgumentParser(description='DTP 复盘分析 Excel 导出')
 parser.add_argument('--preset', default='H1_2026', choices=['H1_2026', 'roll1y', 'full', 'custom'])
 parser.add_argument('--start', default=None, help='自定义窗口起点 YYYY-MM-DD（仅 preset=custom 生效）')
 parser.add_argument('--end', default=None, help='自定义窗口终点 YYYY-MM-DD（仅 preset=custom 生效）')
+parser.add_argument('--scope', default='项目药房', choices=['项目药房', '全部药房'],
+                    help='分析范围：项目药房(默认,仅TOP清单判定为项目的药房) / 全部药房(含非项目)')
 args = parser.parse_args()
 
 OUT = 'output'
@@ -26,7 +28,7 @@ print(f'  销售: {len(sales)} 行, 患者 {sales["患者ID"].nunique()}, 时间
 print(f'  随访: {len(followup)} 行, 状态类分布 {followup["状态类"].value_counts().to_dict()}')
 
 res = E.run_analysis(sales, followup, max_k=12, mult=3, with_patient_crossref=True,
-                     preset=args.preset, custom_start=args.start, custom_end=args.end)
+                     preset=args.preset, custom_start=args.start, custom_end=args.end, scope=args.scope)
 
 xlsx = os.path.join(OUT, 'DTP_留存率与脱落分析_v1.xlsx')
 with pd.ExcelWriter(xlsx, engine='openpyxl') as xw:

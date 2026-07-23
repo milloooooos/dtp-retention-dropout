@@ -40,6 +40,10 @@ with st.sidebar:
             custom_end = st.date_input('自定义·终点', value=datetime.date(2026, 7, 31))
         if custom_end < custom_start:
             st.warning('终点早于起点，将自动对调。')
+    scope = st.selectbox('分析范围', ['项目药房', '全部药房'], index=0,
+                         help='默认「项目药房」：仅统计 TOP 清单中判为项目的药房（按品种判定）。'
+                              '所有核心指标（脱落率A/B、复购率A/B、DOT、留存率）与维度表（医生/医院/药房）统一按此范围计算，口径一致。'
+                              '选「全部药房」则含非项目药房。')
     with_pat = st.checkbox('输出「患者级」跨表关联', value=True,
                            help='按 姓名+药房 复合键匹配销售脱落患者与随访原因；同人不同药房视为不同人(防重名串号)，置信度仍受同名影响，仅供参考')
     st.divider()
@@ -99,6 +103,12 @@ with st.spinner('计算中…'):
     _sig = inspect.signature(E.run_analysis)
     _params = _sig.parameters
     _call = {'max_k': max_k, 'mult': mult, 'with_patient_crossref': with_pat, 'preset': preset}
+    if 'scope' in _params:
+        _call['scope'] = scope
+    else:
+        if scope != '项目药房':
+            st.warning('线上引擎为旧版缓存(不含分析范围参数)，已退化为默认「项目药房」。请 Redeploy 拉取最新引擎。')
+        scope = '项目药房'
     if 'custom_start' in _params:
         _call['custom_start'] = custom_start
         _call['custom_end'] = custom_end
