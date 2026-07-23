@@ -80,6 +80,18 @@ sales_path = save_tmp(sales_file)
 followup_paths = [save_tmp(f) for f in followup_files] if followup_files else None
 top_path = save_tmp(top_file) if top_file else None
 
+# 销售表 sheet 选择（自动识别，可手动覆盖）
+sales_sheets = E.list_sales_sheets(sales_path)
+if len(sales_sheets) > 1:
+    _resolved = E._resolve_sales_sheet(sales_path, '底表')
+    _idx = sales_sheets.index(_resolved) if _resolved in sales_sheets else 0
+    sales_sheet = st.selectbox('销售表所在工作表', sales_sheets, index=_idx,
+                               help='自动识别数据所在 sheet；若识别有误可手动切换。')
+else:
+    sales_sheet = sales_sheets[0] if sales_sheets else '底表'
+    if len(sales_sheets) == 1:
+        st.caption(f'销售表工作表：{sales_sheet}')
+
 if not run:
     st.stop()
 
@@ -87,7 +99,7 @@ if not run:
 with st.spinner('计算中…'):
     try:
         tier = E.load_pharmacy_tier(top_path) if top_path else None
-        sales = E.load_sales(sales_path, tier=tier)
+        sales = E.load_sales(sales_path, sheet=sales_sheet, tier=tier)
     except Exception as e:
         st.error(f'销售底表读取失败：{e}\n请检查列名是否含 商品名称/销售时间/销售数量/患者ID（或等价别名）。')
         st.stop()
